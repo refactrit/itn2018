@@ -1,0 +1,116 @@
+---
+$schema: https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#
+contentVersion: 1.0.0.0
+parameters:
+  location:
+    type: string
+  resourceGroupName: 
+    type: string
+  vmName: 
+    type: string
+variables:
+  vmName: '[concat(parameters(''resourceGroupName''), ''-'', parameters(''vmName''))]'
+  vaultName: '[concat(parameters(''resourceGroupName''), ''-vault1'')]'
+  skuTier: Standard
+  backupFabric: Azure
+  v2VmType: Microsoft.Compute/virtualMachines
+  v2VmContainer: iaasvmcontainer;iaasvmcontainerv2;
+  v2Vm: vm;iaasvmcontainerv2;
+  policyName: '[concat(parameters(''resourceGroupName''), ''-policy1'')]'
+  scheduleRunTimes:
+   - '2018-07-31T22:00:00Z'
+  timeZone: Eastern Standard Time
+  dailyRetentionDurationCount: 31
+  daysOfTheWeek:
+   - Sunday
+  weeklyRetentionDurationCount: 5
+  weeksOfTheMonth:
+   - First
+  monthlyRetentionDurationCount: 13
+  monthsOfYear:
+   - January
+  yearlyRetentionDurationCount: 5
+resources:
+  - apiVersion: '2015-11-10'
+    type: Microsoft.RecoveryServices/vaults
+    name: '[variables(''vaultName'')]'
+    location: '[parameters(''location'')]'
+    sku:
+      name: RS0
+      tier: '[variables(''skuTier'')]'
+    properties: {}
+  - apiVersion: '2016-06-01'
+    name: '[concat(variables(''vaultName''), ''/'', variables(''policyName''))]'
+    type: Microsoft.RecoveryServices/vaults/backupPolicies
+    dependsOn:
+      - '[concat(''Microsoft.RecoveryServices/vaults/'', variables(''vaultName''))]'
+    location: '[parameters(''location'')]'
+    properties:
+      backupManagementType: AzureIaasVM
+      schedulePolicy:
+        scheduleRunFrequency: Daily
+        scheduleRunDays: null
+        scheduleRunTimes: '[variables(''scheduleRunTimes'')]'
+        schedulePolicyType: SimpleSchedulePolicy
+      retentionPolicy:
+        dailySchedule:
+          retentionTimes: '[variables(''scheduleRunTimes'')]'
+          retentionDuration:
+            count: '[variables(''dailyRetentionDurationCount'')]'
+            durationType: Days
+        weeklySchedule:
+          daysOfTheWeek: '[variables(''daysOfTheWeek'')]'
+          retentionTimes: '[variables(''scheduleRunTimes'')]'
+          retentionDuration:
+            count: '[variables(''weeklyRetentionDurationCount'')]'
+            durationType: Weeks
+        monthlySchedule:
+          retentionScheduleFormatType: Weekly
+          retentionScheduleDaily: null
+          retentionScheduleWeekly:
+            daysOfTheWeek: '[variables(''daysOfTheWeek'')]'
+            weeksOfTheMonth: '[variables(''weeksOfTheMonth'')]'
+          retentionTimes: '[variables(''scheduleRunTimes'')]'
+          retentionDuration:
+            count: '[variables(''monthlyRetentionDurationCount'')]'
+            durationType: Months
+        yearlySchedule:
+          retentionScheduleFormatType: Weekly
+          monthsOfYear: '[variables(''monthsOfYear'')]'
+          retentionScheduleDaily: null
+          retentionScheduleWeekly:
+            daysOfTheWeek: '[variables(''daysOfTheWeek'')]'
+            weeksOfTheMonth: '[variables(''weeksOfTheMonth'')]'
+          retentionTimes: '[variables(''scheduleRunTimes'')]'
+          retentionDuration:
+            count: '[variables(''yearlyRetentionDurationCount'')]'
+            durationType: Years
+        retentionPolicyType: LongTermRetentionPolicy
+      timeZone: '[variables(''timeZone'')]'
+  - name: >-
+      [
+        concat(
+          variables('vaultName'), 
+          '/', 
+          variables('backupFabric'), 
+          '/', 
+          variables('v2VmContainer'), 
+          concat(parameters('resourceGroupName'), ';', variables('vmName')), 
+          '/', 
+          variables('v2Vm'), 
+          concat(parameters('resourceGroupName'), ';', variables('vmName'))
+        )
+      ]
+    apiVersion: '2016-06-01'
+    location: '[parameters(''location'')]'
+    type: >-
+      Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems
+    dependsOn:
+      - >-
+        [concat('Microsoft.RecoveryServices/vaults/', variables('vaultName'), '/backupPolicies/', variables('policyName'))]
+    properties:
+      protectedItemType: '[variables(''v2VmType'')]'
+      policyId: >-
+        [resourceId('Microsoft.RecoveryServices/vaults/backupPolicies', variables('vaultName'), variables('policyName'))]
+      sourceResourceId: >-
+        [resourceId(subscription().subscriptionId, parameters('resourceGroupName'), 'Microsoft.Compute/virtualMachines', variables('vmName'))]

@@ -1,0 +1,1 @@
+ansible-playbook playbooks/deploy.yml -i inventories --extra-vars '@inventories/vars.yml'

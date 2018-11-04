@@ -1,0 +1,1 @@
+test010-vm1 ansible_user=admin_service ansible_password=Abc12345 ansible_winrm_server_cert_validation=ignore

@@ -1,0 +1,143 @@
+---
+$schema: https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#
+contentVersion: 1.0.0.0
+parameters:
+  location:
+    type: string
+  resourceGroupName: 
+    type: string
+  vmName: 
+    type: string
+  adminUsername:
+    type: string
+  adminPassword:
+    type: securestring
+variables:
+  virtualNetworkName: '[concat(parameters(''resourceGroupName''), ''-net'')]'
+  subnetName: '[concat(parameters(''resourceGroupName''), ''-subnet'')]'
+  nsgName: '[concat(parameters(''resourceGroupName''), ''-nsg'')]'
+  nicName: '[concat(parameters(''resourceGroupName''), ''-nic'')]'
+  ipName: '[concat(parameters(''resourceGroupName''), ''-ip'')]'
+  vmName: '[concat(parameters(''resourceGroupName''), ''-'', parameters(''vmName''))]'
+  dnsLabelPrefix: refactritn
+resources:
+  - apiVersion: '2016-03-30'
+    type: Microsoft.Network/publicIPAddresses
+    name: '[variables(''ipName'')]'
+    location: '[parameters(''location'')]'
+    properties:
+      publicIPAllocationMethod: Static
+      dnsSettings:
+        domainNameLabel: '[variables(''dnsLabelPrefix'')]'
+  - apiVersion: '2016-03-30'
+    type: Microsoft.Network/virtualNetworks
+    name: '[variables(''virtualNetworkName'')]'
+    location: '[parameters(''location'')]'
+    properties:
+      addressSpace:
+        addressPrefixes:
+          - '172.16.0.0/16'
+      subnets:
+        - name: '[variables(''subnetName'')]'
+          properties: 
+            addressPrefix: '172.16.0.0/24'
+  - name: '[ variables(''nsgName'') ]'
+    apiVersion: '2018-08-01'
+    type: Microsoft.Network/networkSecurityGroups
+    dependsOn:
+      - '[resourceId(''Microsoft.Network/virtualNetworks/'', variables(''virtualNetworkName''))]'
+    location: '[ parameters(''location'') ]'
+    properties:
+      securityRules:
+        - name: winrm
+          properties:
+            protocol: Tcp
+            sourcePortRange: '*'
+            destinationPortRange: 5986
+            priority: 101
+            sourceAddressPrefix: '*'
+            destinationAddressPrefix: VirtualNetwork
+            access: Allow
+            direction: inbound
+        - name: rdp
+          properties:
+            protocol: Tcp
+            sourcePortRange: '*'
+            destinationPortRange: 3389
+            priority: 102
+            sourceAddressPrefix: '*'
+            destinationAddressPrefix: VirtualNetwork
+            access: Allow
+            direction: inbound
+        - name: http
+          properties:
+            protocol: Tcp
+            sourcePortRange: '*'
+            destinationPortRange: 80
+            priority: 103
+            sourceAddressPrefix: '*'
+            destinationAddressPrefix: VirtualNetwork
+            access: Allow
+            direction: inbound
+  - apiVersion: '2016-03-30'
+    type: Microsoft.Network/networkInterfaces
+    name: '[variables(''nicName'')]'
+    location: '[parameters(''location'')]'
+    dependsOn:
+      - '[resourceId(''Microsoft.Network/publicIPAddresses/'', variables(''ipName''))]'
+      - '[resourceId(''Microsoft.Network/virtualNetworks/'', variables(''virtualNetworkName''))]'
+      - '[resourceId(''Microsoft.Network/networkSecurityGroups/'', variables(''nsgName''))]'
+    properties:
+      ipConfigurations:
+        - name: ipconfig1
+          properties:
+            privateIPAllocationMethod: Dynamic
+            publicIPAddress:
+              id: '[resourceId(''Microsoft.Network/publicIPAddresses/'', variables(''ipName''))]'
+            subnet:
+              id: '[resourceId(''Microsoft.Network/virtualNetworks/subnets/'', variables(''virtualNetworkName''), variables(''subnetName''))]'
+      networkSecurityGroup:
+        id: '[resourceId(''Microsoft.Network/networkSecurityGroups'', variables(''nsgName''))]'
+  - apiVersion: '2017-03-30'
+    type: Microsoft.Compute/virtualMachines
+    name: '[variables(''vmName'')]'
+    location: '[parameters(''location'')]'
+    dependsOn:
+      - '[resourceId(''Microsoft.Network/networkInterfaces/'', variables(''nicName''))]'
+    properties:
+      hardwareProfile:
+        vmSize: Standard_A2
+      osProfile:
+        computerName: '[parameters(''vmName'')]'
+        adminUsername: '[parameters(''adminUsername'')]'
+        adminPassword: '[parameters(''adminPassword'')]'
+        windowsConfiguration: 
+          provisionVMAgent: true
+          enableAutomaticUpdates: false
+      storageProfile:
+        imageReference:
+          publisher: MicrosoftWindowsServer
+          offer: WindowsServer
+          sku: 2016-Datacenter
+          version: latest
+        osDisk:
+          createOption: FromImage
+      networkProfile:
+        networkInterfaces:
+          - id: '[resourceId(''Microsoft.Network/networkInterfaces/'', variables(''nicName''))]'
+    resources:
+      - apiVersion: '2018-06-01'
+        type: Microsoft.Compute/virtualMachines/extensions
+        name: '[concat(variables(''vmName''), ''/ConfigureRemotingForAnsible'')]'
+        location: '[parameters(''location'')]'
+        dependsOn:
+          - '[concat(''Microsoft.Compute/virtualMachines/'', variables(''vmName''))]'
+        properties:
+          publisher: Microsoft.Compute
+          type: CustomScriptExtension
+          typeHandlerVersion: '1.9'
+          autoUpgradeMinorVersion: true
+          settings:
+            fileUris:
+              - 'https://raw.githubusercontent.com/ansible/ansible/devel/examples/scripts/ConfigureRemotingForAnsible.ps1'
+            commandToExecute: 'powershell -NoProfile -ExecutionPolicy Unrestricted -File ConfigureRemotingForAnsible.ps1 -EnableCredSSP -ForceNewSSLCert'

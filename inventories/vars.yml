@@ -1,0 +1,13 @@
+---
+location: Central US
+deployment_name: test010-arm
+resource_group_name: test010
+vm_name: vm1
+vm_admin_user: admin_service
+vm_admin_password: Abc12345
+
+vm_arm_template_path: ../arm/vm.yml
+vault_arm_template_path: ../arm/vault.yml
+website_zip_path: ../website/website.zip
+
+connectwise_company_id: 19297

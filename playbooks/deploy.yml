@@ -1,0 +1,104 @@
+---
+- name: Deploy VM
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Deploy ARM Template
+      azure_rm_deployment:
+        state: present
+        deployment_name: "{{ deployment_name }}"
+        location: "{{ location }}"
+        resource_group_name: "{{ resource_group_name }}"
+        template: "{{ lookup('file', vm_arm_template_path) | from_yaml }}"
+        parameters:
+          location:
+            value: "{{ location }}"
+          resourceGroupName:
+            value: "{{ resource_group_name }}"
+          vmName:
+            value: "{{ vm_name }}"
+          adminUsername:
+            value: "{{ vm_admin_user }}"
+          adminPassword:
+            value: "{{ vm_admin_password }}"
+    - name: Rerun Azure dynamic inventory
+      meta: refresh_inventory
+
+
+- name: Configure VM
+  hosts: "{{ resource_group_name + '-' + vm_name }}"
+  gather_facts: no
+  tasks:
+    - wait_for_connection:
+       delay: 30
+       timeout: 600
+    - name: Install IIS
+      win_feature:
+        name: Web-Server
+        include_sub_features: yes
+        include_management_tools: yes
+        state: present
+    - name: Copy website
+      win_copy:
+        src: "{{ website_zip_path }}"
+        dest: "C:\\inetpub\\wwwroot\\website.zip"
+    - name: Extract website
+      win_unzip:
+        src: "C:\\inetpub\\wwwroot\\website.zip"
+        dest: "C:\\inetpub\\wwwroot\\"
+        delete_archive: yes    
+    - name: Ensure port 80 is open in Windows Firewall
+      win_firewall_rule: 
+        name: IIS HTTP
+        localport: 80
+        action: allow
+        direction: in
+        protocol: tcp
+        state: present
+        enabled: yes
+
+
+- name: Deploy Recovery Vault
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Deploy ARM Template
+      azure_rm_deployment:
+        state: present
+        deployment_name: "{{ deployment_name }}"
+        location: "{{ location }}"
+        resource_group_name: "{{ resource_group_name }}"
+        template: "{{ lookup('file', vault_arm_template_path) | from_yaml }}"
+        parameters:
+          location:
+            value: "{{ location }}"
+          resourceGroupName:
+            value: "{{ resource_group_name }}"
+          vmName:
+            value: "{{ vm_name }}"
+
+
+- name: Post Actions
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Send Slack Message
+      slack:
+        token: "{{ lookup('env', 'SLACK_TOKEN') }}"
+        msg: "Deploy successful!"
+    - name: Create ConnectWise Manage Ticket
+      uri:
+        url: "https://api-na.myconnectwise.net/v4_6_release/apis/3.0/service/tickets"
+        method: POST
+        status_code: 201
+        user: "{{ lookup('env', 'CONNECTWISE_COMPANY_ID') + '+' + lookup('env', 'CONNECTWISE_PUBLIC_KEY') }}"
+        password: "{{ lookup('env', 'CONNECTWISE_PRIVATE_KEY') }}"
+        force_basic_auth: yes
+        body_format: json
+        body: 
+          company: 
+            id: "{{ connectwise_company_id }}"
+          summary: "Deploy successful!"
