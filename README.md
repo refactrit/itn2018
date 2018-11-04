@@ -44,24 +44,3 @@ The following Azure resources are created:
     * CONNECTWISE_PUBLIC_KEY
     * CONNECTWISE_PRIVATE_KEY
 7. Run the shell script: `./run.sh`
-
-
-### Demo Notes
-
-Show checklist:
-
-* CLI deploy
-    * ansible-playbook playbooks/deploy.yml -i inventories --extra-vars '@inventories/vars.yml'
-* Azure portal
-    * ARM Deployment
-    * Resource group resources
-    * Virtual machine resource
-    * Security group rules
-    * Recovery vault
-* RDP into VM
-    * Show IIS installed??
-    * Show website files??
-* Show website
-    * http://refactritn.centralus.cloudapp.azure.com/
-* Show Slack message
-* Show ConnectWise ticket
